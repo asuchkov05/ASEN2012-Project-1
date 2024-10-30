@@ -1,0 +1,159 @@
+%{
+Author: Aleksei Suchkov & Tanush Sharma
+Assignment: Project 1
+Creation Date: 10/26/2024
+Inputs: AccurateDataFA24.mat
+Outputs: Plot of accurate data vs euler integration. Plots comparing euler
+integration, rk4 integration and exact solutions given at different step
+sizes. 
+Purpose: Compare how accurate euler intagration and rk4 integration methods
+are against actual data. Use different step sizes to see how it changes the
+accuracy of the graphs. 
+%}
+
+clear; 
+clc;
+close all;
+
+% Load data
+dataA = readmatrix('Data_ISS_A.csv'); 
+dataB = readmatrix('Data_ISS_B.csv');
+
+% Parse data
+timeA = dataA(:, 1); % Time for Spacecraft A
+xA = dataA(:, 2); % X position for Spacecraft A
+yA = dataA(:, 3); % Y position for Spacecraft A
+
+timeB = dataB(:, 1); % Time for Spacecraft B
+xB = dataB(:, 2); % X position for Spacecraft B
+yB = dataB(:, 3); % Y position for Spacecraft B
+
+% Plot the data
+figure();
+title('Plot of Data A & B');
+hold on;
+plot(xA, yA, 'ro');
+plot(xB, yB, 'bo');
+xlabel('X');
+ylabel('Y');
+legend('dataA', 'dataB');
+hold off;
+
+% Interpolate xB and yB to match the time vector of Spacecraft A
+xB_interp = interp1(timeB, xB, timeA, 'linear', 'extrap');
+yB_interp = interp1(timeB, yB, timeA, 'linear', 'extrap');
+
+% Calculate the separation distance at each time step
+distance = sqrt((xB_interp - xA).^2 + (yB_interp - yA).^2);
+
+% Find the minimum distance and the corresponding index
+[~, minIdx] = min(distance);
+
+% Time of closest approach is the time at this minimum distance
+t_ca = timeA(minIdx);
+
+% Display the minimum time of closest approach
+disp('Time of closest approach (t_ca):');
+disp(t_ca);
+
+% Step 1: Perform least squares fit for each dimension (x and y) of both spacecraft
+
+% Fit for Spacecraft A
+[p_xA, SxA] = polyfit(timeA, xA, 1);
+[p_yA, SyA] = polyfit(timeA, yA, 1);
+
+time_extrap_a = linspace(min(timeA),max(timeA) + 100);
+extrap_xA = polyval(p_xA, time_extrap_a);
+extrap_yA = polyval(p_yA, time_extrap_a);
+
+% Fit for Spacecraft B
+[p_xB, SxB] = polyfit(timeB, xB, 1);
+[p_yB, SyB] = polyfit(timeB, yB, 1);
+time_extrap_b = linspace(min(timeB),max(timeB) + 100);
+extrap_xB = polyval(p_xB, time_extrap_b);
+extrap_yB = polyval(p_yB, time_extrap_b);
+
+figure;
+hold on;
+plot(xA, yA, 'ro');
+plot(xB, yB, 'bo');
+plot(extrap_xA, extrap_yA);
+plot(extrap_xB, extrap_yB);
+hold off;
+
+
+
+
+figure();
+hold on;
+plot(xA, yA, 'ro');
+plot(xB, yB, 'bo');
+plot(p_xA, p_yA);
+plot(p_xB, p_yB);
+hold off;
+
+% Extract uncertainties in slope and intercept from S matrix
+uA_unc = SxA.normr / sqrt(SxA.df); % Standard error in uA
+vA_unc = SyA.normr / sqrt(SyA.df); % Standard error in vA
+uB_unc = SxB.normr / sqrt(SxB.df); % Standard error in uB
+vB_unc = SyB.normr / sqrt(SyB.df); % Standard error in vB
+
+xA0_unc = SxA.normr / sqrt(SxA.df); % Standard error in xA0
+yA0_unc = SyA.normr / sqrt(SyA.df); % Standard error in yA0
+xB0_unc = SxB.normr / sqrt(SxB.df); % Standard error in xB0
+yB0_unc = SyB.normr / sqrt(SyB.df); % Standard error in yB0
+
+% Step 2: Compute time of closest approach (t_ca)
+
+% Calculate uncertainty in t_ca using error propagation
+d_tca_duA = -((xB0 - xA0) + t_ca * (uB - uA)) / denominator;
+d_tca_dvA = -((yB0 - yA0) + t_ca * (vB - vA)) / denominator;
+d_tca_duB = (xB0 - xA0 + t_ca * (uB - uA)) / denominator;
+d_tca_dvB = (yB0 - yA0 + t_ca * (vB - vA)) / denominator;
+
+t_ca_unc = sqrt((d_tca_duA * uA_unc)^2 + (d_tca_dvA * vA_unc)^2 + ...
+                (d_tca_duB * uB_unc)^2 + (d_tca_dvB * vB_unc)^2);
+
+% Step 3: Calculate minimum distance at t_ca
+xA_ca = xA0 + uA * t_ca;
+yA_ca = yA0 + vA * t_ca;
+xB_ca = xB0 + uB * t_ca;
+yB_ca = yB0 + vB * t_ca;
+
+D_min = sqrt((xB_ca - xA_ca)^2 + (yB_ca - yA_ca)^2);
+
+% Calculate uncertainty in D_min using error propagation
+dD_duA = ((xA_ca - xB_ca) * t_ca) / D_min;
+dD_duB = ((xB_ca - xA_ca) * t_ca) / D_min;
+dD_dvA = ((yA_ca - yB_ca) * t_ca) / D_min;
+dD_dvB = ((yB_ca - yA_ca) * t_ca) / D_min;
+
+D_min_unc = sqrt((dD_duA * uA_unc)^2 + (dD_duB * uB_unc)^2 + ...
+               (dD_dvA * vA_unc)^2 + (dD_dvB * vB_unc)^2);
+
+% Step 4: Determine collision risk
+if D_min < 1.8
+    warning_code = 'Red: Immediate action required!';
+elseif D_min < 28.2
+    warning_code = 'Yellow: Detailed analysis required.';
+else
+    warning_code = 'Green: Safe distance maintained.';
+end
+
+% Display Results
+fprintf('Time of Closest Approach (t_ca): %.2f ± %.2f seconds\n', t_ca, t_ca_unc);
+fprintf('Minimum Distance (D_min): %.2f ± %.2f km\n', D_min, D_min_unc);
+fprintf('Warning Code: %s\n', warning_code);
+
+% Optional: Plot trajectories and closest approach point
+figure;
+hold on;
+plot(xA, yA, 'b', 'DisplayName', 'Spacecraft A Trajectory');
+plot(xB, yB, 'r', 'DisplayName', 'Spacecraft B Trajectory');
+plot(xA_ca, yA_ca, 'bo', 'DisplayName', 'Closest Approach A');
+plot(xB_ca, yB_ca, 'ro', 'DisplayName', 'Closest Approach B');
+xlabel('X Position (km)');
+ylabel('Y Position (km)');
+title('Trajectories of Spacecraft A and B');
+legend show;
+hold off;
