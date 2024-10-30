@@ -1,0 +1,178 @@
+%{
+Author: Aleksei Suchkov & Tanush Sharma
+Assignment: Project 1
+Creation Date: 10/26/2024
+Inputs: AccurateDataFA24.mat
+Outputs: Plot of accurate data vs euler integration. Plots comparing euler
+integration, rk4 integration and exact solutions given at different step
+sizes. 
+Purpose: Compare how accurate euler intagration and rk4 integration methods
+are against actual data. Use different step sizes to see how it changes the
+accuracy of the graphs. 
+%}
+
+clear; 
+clc;
+close all;
+
+
+%% Step 1: Load data
+dataA = readmatrix('Data_ISS_A.csv'); 
+dataB = readmatrix('Data_ISS_B.csv');
+
+% Parse data
+timeA = dataA(:, 1); % Time for Spacecraft A
+xA = dataA(:, 2); % X position for Spacecraft A
+yA = dataA(:, 3); % Y position for Spacecraft A
+
+timeB = dataB(:, 1); % Time for Spacecraft B
+xB = dataB(:, 2); % X position for Spacecraft B
+yB = dataB(:, 3); % Y position for Spacecraft B
+
+% Plot the data
+figure();
+title('Plot of Data A & B');
+hold on;
+plot(xA, yA, 'ro');
+plot(xB, yB, 'bo');
+xlabel('X');
+ylabel('Y');
+legend('dataA', 'dataB');
+hold off;
+
+%% Step 2: Perform least squares fit for each dimension (x and y) of both spacecraft
+
+% Fit for Spacecraft A
+[p_xA, SxA] = polyfit(timeA, xA, 1); %[slope, intercept]
+[p_yA, SyA] = polyfit(timeA, yA, 1);
+
+time_extrap_a = linspace(min(timeA),max(timeA) + 100);
+extrap_xA = polyval(p_xA, time_extrap_a);
+extrap_yA = polyval(p_yA, time_extrap_a);
+
+% Fit for Spacecraft B
+[p_xB, SxB] = polyfit(timeB, xB, 1);
+[p_yB, SyB] = polyfit(timeB, yB, 1);
+time_extrap_b = linspace(min(timeB),max(timeB) + 100);
+extrap_xB = polyval(p_xB, time_extrap_b);
+extrap_yB = polyval(p_yB, time_extrap_b);
+
+% Plot least squares fit against data points
+figure;
+hold on;
+plot(xA, yA, 'ro');
+plot(xB, yB, 'bo');
+plot(extrap_xA, extrap_yA);
+plot(extrap_xB, extrap_yB);
+hold off;
+
+uA = p_xA(1); % velocity component in x-direction for A
+vA = p_yA(1); % velocity component in y-direction for A
+xA0 = p_xA(2); % initial x position for A
+yA0 = p_yA(2); % initial y position for A
+
+uB = p_xB(1); % velocity component in x-direction for B
+vB = p_yB(1); % velocity component in y-direction for B
+xB0 = p_xB(2); % initial x position for B
+yB0 = p_yB(2); % initial y position for B
+
+% Step 2: Calculate t_ca using the formula
+numerator = -(xB0 - xA0) * (uB - uA) - (yB0 - yA0) * (vB - vA);
+denominator = (uB - uA)^2 + (vB - vA)^2;
+
+% Check for division by zero to avoid errors
+if denominator == 0
+    error('The relative velocities result in parallel trajectories; closest approach cannot be calculated.');
+else
+    t_ca = numerator / denominator;
+    disp('Time of closest approach (t_ca):');
+    disp(t_ca);
+end
+
+% Extract uncertainties in slope and intercept from S matrix
+uA_unc = SxA.normr / sqrt(SxA.df); % Standard error in uA
+vA_unc = SyA.normr / sqrt(SyA.df); % Standard error in vA
+uB_unc = SxB.normr / sqrt(SxB.df); % Standard error in uB
+vB_unc = SyB.normr / sqrt(SyB.df); % Standard error in vB
+
+xA0_unc = SxA.normr / sqrt(SxA.df); % Standard error in xA0
+yA0_unc = SyA.normr / sqrt(SyA.df); % Standard error in yA0
+xB0_unc = SxB.normr / sqrt(SxB.df); % Standard error in xB0
+yB0_unc = SyB.normr / sqrt(SyB.df); % Standard error in yB0
+
+%% Step 3: Compute error in time of closest approach (t_ca)
+xA_mean = mean(xA);
+yA_mean = mean(yA);
+xB_mean = mean(xB);
+yB_mean = mean(yB);
+
+sigma_xA = xA0 - xA_mean;
+sigma_xB = xB0 - xB_mean;
+sigma_yA = yA0 - yA_mean;
+sigma_yB = yB0 - yB_mean;
+
+% Calculate uncertainty in t_ca using error propagation
+delta_x = xB0 - xA0;
+delta_y = yB0 - yA0;
+delta_u = uB - uA;
+delta_v = vB - vA;
+d_tca_xA0 = delta_u / denominator;
+d_tca_xB0 = -(delta_u) / denominator;
+d_tca_yA0 = (delta_v) / denominator;
+d_tca_yB0 = -(delta_v) / denominator;
+
+d_tca_duA = -1*((delta_x)*((delta_u)^2 + (delta_v)^2) - 2*(delta_u)*((-1*(delta_x)*(delta_u)) - (delta_y)*(delta_v))) / denominator^2;
+d_tca_dvA = ((delta_y)*((delta_v)^2 + (delta_v)^2) - 2*(delta_v)*((-1*(delta_x)*(delta_u)) - (delta_y)*(delta_v))) / denominator^2;
+d_tca_duB = -1*((delta_x)*((delta_u)^2 + (delta_v)^2) + 2*(delta_u)*((-1*(delta_x)*(delta_u)) - (delta_y)*(delta_v))) / denominator^2;
+d_tca_dvB = ((delta_y)*((delta_u)^2 + (delta_v)^2) + 2*(delta_v)*((-1*(delta_x)*(delta_u)) - (delta_y)*(delta_v))) / denominator^2;
+
+dt_duA = ((xB0 - xA0) * (2*uA - 2*uB) + (yB0 - yA0) * (vB - vA)) / denominator^2;
+dt_duB = -((xB0 - xA0) * (2*uA - 2*uB) + (yB0 - yA0) * (vB - vA)) / denominator^2;
+dt_dvA = ((xB0 - xA0) * (uB - uA) + (yB0 - yA0) * (2*vA - 2*vB)) / denominator^2;
+dt_dvB = -((xB0 - xA0) * (uB - uA) + (yB0 - yA0) * (2*vA - 2*vB)) / denominator^2;
+
+t_ca_unc = sqrt((d_tca_xA0 * sigma_xA)^2 + (d_tca_xB0 * sigma_xB)^2 + (d_tca_yA0 * sigma_yA)^2 + (d_tca_yB0 * sigma_yB)^2 + (dt_duA * uA_unc)^2 + (dt_dvA * vA_unc)^2 + (dt_duB * uB_unc)^2 + (dt_dvB * vB_unc)^2);
+
+% Step 3: Calculate minimum distance at t_ca
+xA_ca = xA0 + uA * t_ca;
+yA_ca = yA0 + vA * t_ca;
+xB_ca = xB0 + uB * t_ca;
+yB_ca = yB0 + vB * t_ca;
+
+D_min = sqrt((xB_ca - xA_ca)^2 + (yB_ca - yA_ca)^2);
+
+% Calculate uncertainty in D_min using error propagation
+dD_dxA = ((1/2)*((xB_ca -xA_ca)^2 + (yB_ca - yA_ca)^2)^(-1/2)) * 2*(xB_ca - xA_ca)*(-xA_ca);
+dD_dxB = ((1/2)*((xB_ca -xA_ca)^2 + (yB_ca - yA_ca)^2)^(-1/2)) * 2*(xB_ca - xA_ca)*(xB_ca);
+dD_dyA = ((1/2)*((xB_ca -xA_ca)^2 + (yB_ca - yA_ca)^2)^(-1/2)) * 2*(xB_ca - xA_ca)*(-xA_ca);
+dD_dyB = ((yB_ca - yA_ca) * t_ca) / D_min;
+
+D_min_unc = sqrt((dD_duA * uA_unc)^2 + (dD_duB * uB_unc)^2 + ...
+               (dD_dvA * vA_unc)^2 + (dD_dvB * vB_unc)^2);
+
+% Step 4: Determine collision risk
+if D_min < 1.8
+    warning_code = 'Red: Immediate action required!';
+elseif D_min < 28.2
+    warning_code = 'Yellow: Detailed analysis required.';
+else
+    warning_code = 'Green: Safe distance maintained.';
+end
+
+% Display Results
+fprintf('Time of Closest Approach (t_ca): %.2f ± %.2f seconds\n', t_ca, t_ca_unc);
+fprintf('Minimum Distance (D_min): %.2f ± %.2f km\n', D_min, D_min_unc);
+fprintf('Warning Code: %s\n', warning_code);
+
+% Optional: Plot trajectories and closest approach point
+figure;
+hold on;
+plot(xA, yA, 'b', 'DisplayName', 'Spacecraft A Trajectory');
+plot(xB, yB, 'r', 'DisplayName', 'Spacecraft B Trajectory');
+plot(xA_ca, yA_ca, 'bo', 'DisplayName', 'Closest Approach A');
+plot(xB_ca, yB_ca, 'ro', 'DisplayName', 'Closest Approach B');
+xlabel('X Position (km)');
+ylabel('Y Position (km)');
+title('Trajectories of Spacecraft A and B');
+legend show;
+hold off;
