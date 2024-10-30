@@ -1,0 +1,117 @@
+%{
+Author: 
+Assignment: 
+Creation Date: 10/27/2024
+Inputs: 
+Outputs: 
+Purpose: 
+%}
+
+clear;
+clc;
+close all;
+
+% Load data
+dataA = readmatrix('Data_ISS_A.csv'); % Replace with actual filename
+dataB = readmatrix('Data_ISS_B.csv');
+
+% Parse data (assuming columns are time, x-position, y-position)
+timeA = dataA(:, 1);
+xA = dataA(:, 2);
+yA = dataA(:, 3);
+
+timeB = dataB(:, 1);
+xB = dataB(:, 2);
+yB = dataB(:, 3);
+
+% Step 1: Perform least squares fit for each dimension (x and y) of both spacecraft
+
+% Fit for Spacecraft A
+[p_xA, SxA] = polyfit(timeA, xA, 1);
+[p_yA, SyA] = polyfit(timeA, yA, 1);
+
+% Fit for Spacecraft B
+[p_xB, SxB] = polyfit(timeB, xB, 1);
+[p_yB, SyB] = polyfit(timeB, yB, 1);
+
+% Extract velocity components and intercepts
+uA = p_xA(1); vA = p_yA(1);
+uB = p_xB(1); vB = p_yB(1);
+
+xA0 = p_xA(2); yA0 = p_yA(2);
+xB0 = p_xB(2); yB0 = p_yB(2);
+
+% Extract uncertainties in slope and intercept from S matrix
+uA_unc = SxA.normr / sqrt(SxA.df); % Standard error in uA
+vA_unc = SyA.normr / sqrt(SyA.df); % Standard error in vA
+uB_unc = SxB.normr / sqrt(SxB.df); % Standard error in uB
+vB_unc = SyB.normr / sqrt(SyB.df); % Standard error in vB
+
+xA0_unc = SxA.normr / sqrt(SxA.df); % Standard error in xA0
+yA0_unc = SyA.normr / sqrt(SyA.df); % Standard error in yA0
+xB0_unc = SxB.normr / sqrt(SxB.df); % Standard error in xB0
+yB0_unc = SyB.normr / sqrt(SyB.df); % Standard error in yB0
+
+% Step 2: Compute time of closest approach (t_ca)
+numerator = (xB0 - xA0) * (uB - uA) + (yB0 - yA0) * (vB - vA);
+denominator = (uB - uA)^2 + (vB - vA)^2;
+
+% Check for division by zero
+if denominator == 0
+    error('The relative velocities result in parallel trajectories; closest approach cannot be calculated.');
+end
+
+t_ca = numerator / denominator;
+
+% Calculate uncertainty in t_ca using error propagation
+d_tca_duA = -((xB0 - xA0) + t_ca * (uB - uA)) / denominator;
+d_tca_dvA = -((yB0 - yA0) + t_ca * (vB - vA)) / denominator;
+d_tca_duB = (xB0 - xA0 + t_ca * (uB - uA)) / denominator;
+d_tca_dvB = (yB0 - yA0 + t_ca * (vB - vA)) / denominator;
+
+t_ca_unc = sqrt((d_tca_duA * uA_unc)^2 + (d_tca_dvA * vA_unc)^2 + ...
+                (d_tca_duB * uB_unc)^2 + (d_tca_dvB * vB_unc)^2);
+
+% Step 3: Calculate minimum distance at t_ca
+xA_ca = xA0 + uA * t_ca;
+yA_ca = yA0 + vA * t_ca;
+xB_ca = xB0 + uB * t_ca;
+yB_ca = yB0 + vB * t_ca;
+
+D_min = sqrt((xB_ca - xA_ca)^2 + (yB_ca - yA_ca)^2);
+
+% Calculate uncertainty in D_min using error propagation
+dD_duA = ((xA_ca - xB_ca) * t_ca) / D_min;
+dD_duB = ((xB_ca - xA_ca) * t_ca) / D_min;
+dD_dvA = ((yA_ca - yB_ca) * t_ca) / D_min;
+dD_dvB = ((yB_ca - yA_ca) * t_ca) / D_min;
+
+D_min_unc = sqrt((dD_duA * uA_unc)^2 + (dD_duB * uB_unc)^2 + ...
+               (dD_dvA * vA_unc)^2 + (dD_dvB * vB_unc)^2);
+
+% Step 4: Determine collision risk
+if D_min < 1.8
+    warning_code = 'Red: Immediate action required!';
+elseif D_min < 28.2
+    warning_code = 'Yellow: Detailed analysis required.';
+else
+    warning_code = 'Green: Safe distance maintained.';
+end
+
+% Display Results
+fprintf('Time of Closest Approach (t_ca): %.2f ± %.2f seconds\n', t_ca, t_ca_unc);
+fprintf('Minimum Distance (D_min): %.2f ± %.2f km\n', D_min, D_min_unc);
+fprintf('Warning Code: %s\n', warning_code);
+
+% Optional: Plot trajectories and closest approach point
+figure;
+hold on;
+plot(xA, yA, 'b', 'DisplayName', 'Spacecraft A Trajectory');
+plot(xB, yB, 'r', 'DisplayName', 'Spacecraft B Trajectory');
+plot(xA_ca, yA_ca, 'bo', 'DisplayName', 'Closest Approach A');
+plot(xB_ca, yB_ca, 'ro', 'DisplayName', 'Closest Approach B');
+xlabel('X Position (km)');
+ylabel('Y Position (km)');
+title('Trajectories of Spacecraft A and B');
+legend show;
+hold off;
