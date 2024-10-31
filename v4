@@ -87,7 +87,7 @@ if denominator == 0 % checking for division by zero to avoid errors
     error('The relative velocities result in parallel trajectories; closest approach cannot be calculated.');
 else
     t_ca = numerator / denominator;
-    disp(['Time of closest approach (t_ca): ',num2str(t_ca)]);
+    disp(['Time of closest approach (t_ca): ',num2str(t_ca),' sec']);
     
     % positions at time of closest approach
     posA_ca = [polyval(p_xA, t_ca), polyval(p_yA, t_ca)]; % Position of Spacecraft A
@@ -95,7 +95,7 @@ else
     
     % Calculate distance between the two points at closest approach
     distance_ca = sqrt((posA_ca(1) - posB_ca(1))^2 + (posA_ca(2) - posB_ca(2))^2);
-    disp(['Distance at closest approach: ', num2str(distance_ca)]); % Display the distance
+    disp(['Distance at closest approach: ', num2str(distance_ca),' km']); % Display the distance
     
     % Plot the data, best fit, and points of closest approach.
     figure;
@@ -106,7 +106,6 @@ else
     plot(extrap_xB, extrap_yB, 'b--', 'DisplayName', 'Fit B');
     plot(posA_ca(1), posA_ca(2), 'kx', 'MarkerSize', 10, 'LineWidth', 2, 'DisplayName', 'Closest Approach A');
     plot(posB_ca(1), posB_ca(2), 'kx', 'MarkerSize', 10, 'LineWidth', 2, 'DisplayName', 'Closest Approach B');
-    
     xlabel('X');
     ylabel('Y');
     legend('show');
