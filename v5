@@ -1,0 +1,143 @@
+%{
+Author: Aleksei Suchkov & Tanush Sharma
+Assignment: Project 1
+Creation Date: 10/26/2024
+Inputs: 
+Outputs: 
+Purpose: 
+%}
+
+clear; 
+clc;
+close all;
+
+
+%% Step 1: Load data
+
+dataA = readmatrix('Data_ISS_A.csv'); 
+dataB = readmatrix('Data_ISS_B.csv');
+
+timeA = dataA(:, 1); % Time for Spacecraft A
+xA = dataA(:, 2); % X position for Spacecraft A
+yA = dataA(:, 3); % Y position for Spacecraft A
+
+timeB = dataB(:, 1); % Time for Spacecraft B
+xB = dataB(:, 2); % X position for Spacecraft B
+yB = dataB(:, 3); % Y position for Spacecraft B
+
+% Plot the data
+%{
+figure();
+title('Plot of Data A & B');
+hold on;
+plot(xA, yA, 'ro');
+plot(xB, yB, 'bo');
+xlabel('X');
+ylabel('Y');
+legend('dataA', 'dataB');
+hold off;
+%}
+
+%% Step 2: Perform least squares fit for each dimension of both spacecraft
+
+% Fit for Spacecraft A
+p_xA= polyfit(timeA, xA, 1); %[slope, intercept]
+p_yA= polyfit(timeA, yA, 1);
+
+time_extrap_a = linspace(min(timeA),max(timeA) + 100);
+extrap_xA = polyval(p_xA, time_extrap_a);
+extrap_yA = polyval(p_yA, time_extrap_a);
+
+% Fit for Spacecraft B
+p_xB = polyfit(timeB, xB, 1);
+p_yB = polyfit(timeB, yB, 1);
+time_extrap_b = linspace(min(timeB),max(timeB) + 100);
+extrap_xB = polyval(p_xB, time_extrap_b);
+extrap_yB = polyval(p_yB, time_extrap_b);
+
+% Plot least squares fit against data points
+%{
+figure;
+hold on;
+plot(xA, yA, 'ro');
+plot(xB, yB, 'bo');
+plot(extrap_xA, extrap_yA,'r');
+plot(extrap_xB, extrap_yB,'b');
+xlabel('X');
+ylabel('Y');
+legend('dataA', 'dataB');
+hold off;
+%}
+
+uA = p_xA(1); % velocity component in x-direction for A
+vA = p_yA(1); % velocity component in y-direction for A
+xA0 = p_xA(2); % initial x position for A
+yA0 = p_yA(2); % initial y position for A
+
+uB = p_xB(1); % velocity component in x-direction for B
+vB = p_yB(1); % velocity component in y-direction for B
+xB0 = p_xB(2); % initial x position for B
+yB0 = p_yB(2); % initial y position for B
+
+% Step 2: Calculate t_ca using the formula
+numerator = -(xB0 - xA0) * (uB - uA) - (yB0 - yA0) * (vB - vA);
+denominator = (uB - uA)^2 + (vB - vA)^2;
+
+if denominator == 0 % checking for division by zero to avoid errors
+    error('The relative velocities result in parallel trajectories; closest approach cannot be calculated.');
+else
+    t_ca = numerator / denominator;
+    disp(['Time of closest approach (t_ca): ',num2str(t_ca),' sec']);
+    
+    % positions at time of closest approach
+    posA_ca = [polyval(p_xA, t_ca), polyval(p_yA, t_ca)]; % Position of Spacecraft A
+    posB_ca = [polyval(p_xB, t_ca), polyval(p_yB, t_ca)]; % Position of Spacecraft B
+    
+    % Calculate distance between the two points at closest approach
+    distance_ca = sqrt((posA_ca(1) - posB_ca(1))^2 + (posA_ca(2) - posB_ca(2))^2);
+    disp(['Distance at closest approach: ', num2str(distance_ca),' km']); % Display the distance
+    
+    % Plot the data, best fit, and points of closest approach.
+    figure;
+    hold on;
+    plot(xA, yA, 'ro', 'DisplayName', 'Data A');
+    plot(xB, yB, 'bo', 'DisplayName', 'Data B');
+    plot(extrap_xA, extrap_yA, 'r--', 'DisplayName', 'Fit A');
+    plot(extrap_xB, extrap_yB, 'b--', 'DisplayName', 'Fit B');
+    plot(posA_ca(1), posA_ca(2), 'kx', 'MarkerSize', 10, 'LineWidth', 2, 'DisplayName', 'Closest Approach A');
+    plot(posB_ca(1), posB_ca(2), 'kx', 'MarkerSize', 10, 'LineWidth', 2, 'DisplayName', 'Closest Approach B');
+    xlabel('X');
+    ylabel('Y');
+    legend('show');
+    title('Closest Approach of Spacecraft A and B');
+    hold off;
+end
+
+% Define the uncertainties in initial positions and velocities
+delta_xA0 = 1; % uncertainty in xA0
+delta_xB0 = 1; % uncertainty in xB0
+delta_yA0 = 1; % uncertainty in yA0
+delta_yB0 = 1; % uncertainty in yB0
+delta_uA = 1;  % uncertainty in uA
+delta_uB = 1;  % uncertainty in uB
+delta_vA = 1;  % uncertainty in vA
+delta_vB = 1;  % uncertainty in vB
+
+% partial derivatives of t_ca with respect to each variable
+dt_dxA0 = (uB - uA) / denominator;
+dt_dxB0 = -(uB - uA) / denominator;
+dt_dyA0 = (vB - vA) / denominator;
+dt_dyB0 = -(vB - vA) / denominator;
+dt_duA = -((xB0 - xA0) + t_ca * (uB - uA)) / denominator;
+dt_duB = ((xB0 - xA0) + t_ca * (uB - uA)) / denominator;
+dt_dvA = -((yB0 - yA0) + t_ca * (vB - vA)) / denominator;
+dt_dvB = ((yB0 - yA0) + t_ca * (vB - vA)) / denominator;
+
+% vector of partial derivatives and uncertainties
+partials = [dt_dxA0, dt_dxB0, dt_dyA0, dt_dyB0, dt_duA, dt_duB, dt_dvA, dt_dvB];
+uncertainties = [delta_xA0, delta_xB0, delta_yA0, delta_yB0, delta_uA, delta_uB, delta_vA, delta_vB];
+
+% calculate total uncertainty using norm
+delta_t_ca = norm(partials .* uncertainties);
+
+disp(['Uncertainty in t_ca: ', num2str(delta_t_ca), ' sec']);
