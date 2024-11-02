@@ -1,0 +1,142 @@
+%{
+Author: Aleksei Suchkov & Tanush Sharma
+Assignment: Project 1
+Creation Date: 10/26/2024
+Inputs: 
+Outputs: 
+Purpose: 
+%}
+
+clear; 
+clc;
+close all;
+
+%% Step 1: Load data
+dataA = readmatrix('Data_ISS_A.csv'); 
+dataB = readmatrix('Data_ISS_B.csv');
+
+timeA = dataA(:, 1); % Time for Spacecraft A
+xA = dataA(:, 2); % X position for Spacecraft A
+yA = dataA(:, 3); % Y position for Spacecraft A
+
+timeB = dataB(:, 1); % Time for Spacecraft B
+xB = dataB(:, 2); % X position for Spacecraft B
+yB = dataB(:, 3); % Y position for Spacecraft B
+
+
+%% Step 2: Least Squares Fit for Each Spacecraft
+% Fit for Spacecraft A
+p_xA= polyfit(timeA, xA, 1); % [slope, intercept]
+p_yA= polyfit(timeA, yA, 1);
+
+% Fit for Spacecraft B
+p_xB = polyfit(timeB, xB, 1);
+p_yB = polyfit(timeB, yB, 1);
+
+% Extract initial positions and velocities
+
+xA0 = p_xA(2); % initial x position for A
+yA0 = p_yA(2); % initial y position for A
+uA = p_xA(1); % velocity component in x-direction for A
+vA = p_yA(1); % velocity component in y-direction for A
+
+xB0 = p_xB(2); % initial x position for B
+yB0 = p_yB(2); % initial y position for B
+uB = p_xB(1); % velocity component in x-direction for B
+vB = p_yB(1); % velocity component in y-direction for B
+
+%% Step 3: Time of Closest Approach Calculation
+numerator = -(xB0 - xA0) * (uB - uA) - (yB0 - yA0) * (vB - vA);
+denominator = (uB - uA)^2 + (vB - vA)^2;
+
+if denominator == 0
+    error('The relative velocities result in parallel trajectories; closest approach cannot be calculated.');
+else
+    t_ca = numerator / denominator;
+end
+
+% Position of each spacecraft at time of closest approach
+posA_ca = [xA0 + uA * t_ca, yA0 + vA * t_ca];
+posB_ca = [xB0 + uB * t_ca, yB0 + vB * t_ca];
+
+% Distance at closest approach
+dx = posA_ca(1) - posB_ca(1);
+dy = posA_ca(2) - posB_ca(2);
+D_min = sqrt(dx^2 + dy^2);
+
+%% Step 4: Uncertainty Calculations in t_ca and D_min
+
+% Known uncertainties (as provided or assumed for this example)
+delta_xA0 = 0.1; delta_yA0 = 0.1; % Uncertainty in initial positions for A
+delta_xB0 = 0.1; delta_yB0 = 0.1; % Uncertainty in initial positions for B
+delta_uA = 0.01; delta_vA = 0.01; % Uncertainty in velocities for A
+delta_uB = 0.01; delta_vB = 0.01; % Uncertainty in velocities for B
+
+% Partial derivatives of t_ca with respect to position and velocity components
+dt_dxA0 = (uB - uA) / denominator;
+dt_dxB0 = -(uB - uA) / denominator;
+dt_dyA0 = (vB - vA) / denominator;
+dt_dyB0 = -(vB - vA) / denominator;
+dt_duA = -((xB0 - xA0) + t_ca * (uB - uA)) / denominator;
+dt_duB = ((xB0 - xA0) + t_ca * (uB - uA)) / denominator;
+dt_dvA = -((yB0 - yA0) + t_ca * (vB - vA)) / denominator;
+dt_dvB = ((yB0 - yA0) + t_ca * (vB - vA)) / denominator;
+
+% Uncertainty in t_ca
+delta_t_ca = sqrt((dt_dxA0 * delta_xA0)^2 + (dt_dxB0 * delta_xB0)^2 + ...
+                  (dt_dyA0 * delta_yA0)^2 + (dt_dyB0 * delta_yB0)^2 + ...
+                  (dt_duA * delta_uA)^2 + (dt_duB * delta_uB)^2 + ...
+                  (dt_dvA * delta_vA)^2 + (dt_dvB * delta_vB)^2);
+
+% Calculate partial derivatives for D_min
+dD_dxA = dx / D_min;
+dD_dyA = dy / D_min;
+dD_dxB = -dx / D_min;
+dD_dyB = -dy / D_min;
+
+% Uncertainties in positions at closest approach
+delta_xA_tca = sqrt(delta_xA0^2 + (delta_uA * t_ca)^2);
+delta_yA_tca = sqrt(delta_yA0^2 + (delta_vA * t_ca)^2);
+delta_xB_tca = sqrt(delta_xB0^2 + (delta_uB * t_ca)^2);
+delta_yB_tca = sqrt(delta_yB0^2 + (delta_vB * t_ca)^2);
+
+% Total uncertainty in D_min
+delta_D_min = sqrt((dD_dxA * delta_xA_tca)^2 + (dD_dyA * delta_yA_tca)^2 + ...
+                   (dD_dxB * delta_xB_tca)^2 + (dD_dyB * delta_yB_tca)^2);
+
+% Display results
+disp(['Time of closest approach (t_ca): ', num2str(t_ca), ' s']);
+disp(['Uncertainty in t_ca: ', num2str(delta_t_ca), ' s']);
+disp(['Minimum distance (D_min): ', num2str(D_min), ' km']);
+disp(['Uncertainty in D_min: ', num2str(delta_D_min), ' km']);
+
+%% Step 5: Plot the Trajectories and Closest Approach Point
+
+% Generate time range for plotting (covers both datasets)
+time_range = linspace(min(timeA(1), timeB(1)), max(timeA(end), timeB(end)), 100);
+
+% Calculate positions for Spacecraft A and B over time_range
+xA_plot = p_xA(1) * time_range + p_xA(2);
+yA_plot = p_yA(1) * time_range + p_yA(2);
+
+xB_plot = p_xB(1) * time_range + p_xB(2);
+yB_plot = p_yB(1) * time_range + p_yB(2);
+
+% Plot the trajectories
+figure;
+hold on;
+% Original Data
+plot(xA, yA, 'bo', 'DisplayName', 'Data A');
+plot(xB, yB, 'ro', 'DisplayName', 'Data B');
+% Trajectories
+plot(xA_plot, yA_plot, 'b-', 'LineWidth', 1.5); 
+plot(xB_plot, yB_plot, 'r-', 'LineWidth', 1.5);
+% Mark point of closest approach
+plot(posA_ca(1), posA_ca(2), 'kx', 'MarkerSize', 10, 'LineWidth', 2, 'DisplayName', 'Closest Approach A');
+plot(posB_ca(1), posB_ca(2), 'kx', 'MarkerSize', 10, 'LineWidth', 2, 'DisplayName', 'Closest Approach B');
+xlabel('X Position (km)');
+ylabel('Y Position (km)');
+legend('Trajectory A', 'Trajectory B', 'Start A', 'Start B', 'Closest Approach A', 'Closest Approach B');
+title('Trajectories of Spacecraft A and B with Closest Approach Point');
+grid on;
+hold off;
