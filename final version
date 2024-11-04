@@ -1,0 +1,237 @@
+%{
+Author: Aleksei Suchkov & Tanush Sharma
+Assignment: Project 1
+Creation Date: 10/26/2024
+Inputs: Data_ISS_A.csv & Data_ISS_B.csv
+Outputs: Time of closest approach (t_ca), Distance at closest approach (D_min), and their uncertainties
+Purpose: To determine the closest distance between two spacecraft near the ISS and the time it happens, with uncertainty calculations.
+%}
+
+clear; 
+clc;
+close all;
+
+%% Step 1: Load Data
+% Here we will load the position data for each spacecraft
+% dataA and dataB contain time and (x, y) positions respectivly for Spacecraft A and B
+
+dataA = readmatrix('Data_ISS_A.csv'); % data for Spacecraft A
+dataB = readmatrix('Data_ISS_B.csv'); % data for Spacecraft B
+
+% separate data into individual columns for time,x,y
+timeA = dataA(:, 1); % Time for Spacecraft A
+xA = dataA(:, 2); % X position for Spacecraft A
+yA = dataA(:, 3); % Y position for Spacecraft A
+
+timeB = dataB(:, 1); % Time for Spacecraft B
+xB = dataB(:, 2); % X position for Spacecraft B
+yB = dataB(:, 3); % Y position for Spacecraft B
+
+figure;
+hold on;
+plot(xA, yA, 'bo', 'DisplayName', 'Spacecraft A Data Points');
+plot(xB, yB, 'ro', 'DisplayName', 'Spacecraft B Data Points');
+xlabel('X Position (km)');
+ylabel('Y Position (km)');
+legend;
+title('Original Data for Spacecraft');
+grid on;
+hold off;
+
+%% Step 2: Perform least squares fit for each spacecraft in each dimension
+% We're finding a line that best fits the x and y positions over time
+% This gives us the [initial velocity, initial position] of each spacecraft
+
+% for Spacecraft A
+p_xA = polyfit(timeA, xA, 1); % Fit line to x positions of A
+p_yA = polyfit(timeA, yA, 1); % Fit line to y positions of A
+
+% for Spacecraft B
+p_xB = polyfit(timeB, xB, 1); % Fit line to x positions of B
+p_yB = polyfit(timeB, yB, 1); % Fit line to y positions of B
+
+% Velocity and initial positions for both spacecraft
+xA0 = p_xA(2); % initial x position for A
+yA0 = p_yA(2); % initial y position for A
+uA = p_xA(1); % velocity component in x-direction for A
+vA = p_yA(1); % velocity component in y-direction for A
+
+xB0 = p_xB(2); % initial x position for B
+yB0 = p_yB(2); % initial y position for B
+uB = p_xB(1); % velocity component in x-direction for B
+vB = p_yB(1); % velocity component in y-direction for B
+
+%% Step 3: Calculate time and distance of closest approach
+% Using the relative motion equations we can find when the two spacecraft get closest
+% check for parallel trajectories first (which would make it unsolvable)
+
+% using varibles numerator and denominator to make code easy to read 
+numerator = -(xB0 - xA0) * (uB - uA) - (yB0 - yA0) * (vB - vA);
+denominator = (uB - uA)^2 + (vB - vA)^2;
+
+if denominator == 0
+    error('The trajectories are parallel; closest approach can’t be calculated.');
+else
+    t_ca = numerator / denominator; % Time at closest approach
+    disp(['Time of closest approach (t_ca): ',num2str(t_ca),' sec']);
+    
+    % Calculate positions at the closest approach time
+    posA_ca = [polyval(p_xA, t_ca), polyval(p_yA, t_ca)];
+    posB_ca = [polyval(p_xB, t_ca), polyval(p_yB, t_ca)];
+    
+    % Calculate the distance at closest approach
+    distance_ca = sqrt((posA_ca(1) - posB_ca(1))^2 + (posA_ca(2) - posB_ca(2))^2);
+    disp(['Distance at closest approach: ', num2str(distance_ca), ' km']);
+end
+
+%% Step 4: Calculate uncertainties in initial positions and velocities
+% Now we find the uncertainty in our fit
+
+% residuals for Spacecraft A
+residuals_xA = xA - polyval(p_xA, timeA);
+residuals_yA = yA - polyval(p_yA, timeA);
+
+% Uncertainties for Spacecraft A
+std_xA = std(residuals_xA); % Standard deviation of x residuals
+std_yA = std(residuals_yA); % Standard deviation of y residuals
+
+delta_xA0 = std_xA;
+delta_yA0 = std_yA;
+delta_uA = std_xA / sqrt(sum((timeA - mean(timeA)).^2));
+delta_vA = std_yA / sqrt(sum((timeA - mean(timeA)).^2));
+
+% Residuals for Spacecraft B
+residuals_xB = xB - polyval(p_xB, timeB);
+residuals_yB = yB - polyval(p_yB, timeB);
+
+% Uncertainties for Spacecraft B
+std_xB = std(residuals_xB);
+std_yB = std(residuals_yB);
+
+delta_xB0 = std_xB;
+delta_yB0 = std_yB;
+delta_uB = std_xB / sqrt(sum((timeB - mean(timeB)).^2));
+delta_vB = std_yB / sqrt(sum((timeB - mean(timeB)).^2));
+
+%% Step 5: Calculate total uncertainty in time of closest approach (t_ca)
+% now we use partial derivatives to figure out how each initial condition affects t_ca.
+
+% Partial derivatives of t_ca with respect to each variable
+dt_dxA0 = (uB - uA) / denominator;
+dt_dxB0 = -(uB - uA) / denominator;
+dt_dyA0 = (vB - vA) / denominator;
+dt_dyB0 = -(vB - vA) / denominator;
+
+dt_duA = (((xB0 - xA0) * denominator) + ( 2 * (uB - uA) * numerator )) / denominator^2;
+dt_duB = - (((xB0 - xA0) * denominator) + ( 2 * (uB - uA) * numerator )) / denominator^2;
+dt_dvA = (((yB0 - yA0) * denominator) + ( 2 * (uB - uA) * numerator )) / denominator^2;
+dt_dvB = - (((yB0 - yA0) * denominator) + ( 2 * (uB - uA) * numerator )) / denominator^2;
+
+% Partial derivatives and uncertainties vectors
+partials = [dt_dxA0, dt_dxB0, dt_dyA0, dt_dyB0, dt_duA, dt_duB, dt_dvA, dt_dvB];
+uncertainties = [delta_xA0, delta_xB0, delta_yA0, delta_yB0, delta_uA, delta_uB, delta_vA, delta_vB];
+
+% Total uncertainty in t_ca
+delta_t_ca = norm(partials .* uncertainties);
+disp(['Uncertainty in t_ca: ', num2str(delta_t_ca), ' sec']);
+
+%% Step 6: Calculate uncertainty in closest approach distance (D_min)
+%  do the same thing as time but with distance
+
+dxA = posB_ca(1) - posA_ca(1);
+dyA = posB_ca(2) - posA_ca(2);
+D_min = distance_ca;
+
+% derivative terms for D_min
+dD_dxA = dxA / D_min;
+dD_dyA = dyA / D_min;
+dD_dxB = -dxA / D_min;
+dD_dyB = -dyA / D_min;
+
+% Calculate  uncertainty in D_min
+delta_D_min = sqrt((dD_dxA * std_xA)^2 + (dD_dyA * std_yA)^2 + (dD_dxB * std_xB)^2 + (dD_dyB * std_yB)^2);
+disp(['Uncertainty in D_min: ', num2str(delta_D_min), ' km']);
+disp(' '); % formating
+
+%% Step 7: Plotting the spacecraft paths and closest approach
+% plot both trajectories, mark the closest approach point.
+
+figure;
+hold on;
+
+% Extend the time range to include t_ca
+time_range = linspace(min([timeA; timeB]), max([timeA; timeB]) + 75, 100); % Add 50 seconds buffer after max time
+
+% Calculate the positions using the polynomial fits for the entire time range
+xA_fit = polyval(p_xA, time_range);
+yA_fit = polyval(p_yA, time_range);
+xB_fit = polyval(p_xB, time_range);
+yB_fit = polyval(p_yB, time_range);
+
+% Plot the fitted lines
+plot(xA_fit, yA_fit, 'b-', 'DisplayName', 'Trajectory of Spacecraft A'); % Line for Spacecraft A
+plot(xB_fit, yB_fit, 'r-', 'DisplayName', 'Trajectory of Spacecraft B'); % Line for Spacecraft B
+
+% Plot the original data points and closest approach
+plot(xA, yA, 'bo', 'DisplayName', 'Spacecraft A Data Points');
+plot(xB, yB, 'ro', 'DisplayName', 'Spacecraft B Data Points');
+plot(posA_ca(1), posA_ca(2), 'bx', 'MarkerSize', 10, 'LineWidth', 2, 'DisplayName', 'Closest Approach (A)');
+plot(posB_ca(1), posB_ca(2), 'rx', 'MarkerSize', 10, 'LineWidth', 2, 'DisplayName', 'Closest Approach (B)');
+
+xlabel('X Position (km)');
+ylabel('Y Position (km)');
+legend;
+title('Spacecraft Trajectories and Closest Approach');
+grid on;
+hold off;
+
+%% Step 8: Evaluate collision risk and display warnings based on D_min
+
+% Define the thresholds for warning codes
+D_red_threshold = 1.8;   % km for Warning Code "Red"
+D_yellow_threshold = 28.2; % km for Warning Code "Yellow"
+
+D_min_lower = D_min - delta_D_min; % Lower bound of D_min since we don't care about an upper bound that includes a greter distance
+
+% Check warning conditions
+if D_min_lower < D_red_threshold
+    disp('Warning Code: RED - Action must be taken. Perform collision avoidance maneuver or crew must move to Soyuz or commercial crew spacecraft.');
+elseif D_min_lower < D_yellow_threshold
+    disp('Warning Code: YELLOW - Detailed analysis of the threat must be conducted; contingency plans must be developed.');
+else
+    disp('No immediate action required. Distance is safe.');
+end
+
+%% Step 9: Add horizontal error bars for time of closest approach and distance at closest approach in a new figure
+
+figure;
+
+subplot(1, 2, 1); % splitting the figure into two to have both on space figure, 1st one here. 
+
+hold on;
+% time of closest approach with error bars
+errorbar(t_ca, 1, delta_t_ca, 'horizontal', 'LineStyle', 'none', 'Color', 'k', 'LineWidth', 1.5, 'DisplayName', 'Uncertainty in t_{CA}');
+plot(t_ca, 1, 'ko', 'MarkerSize', 8, 'DisplayName', 'Time of Closest Approach');
+xlim([t_ca - delta_t_ca - 5, t_ca + delta_t_ca + 5]); % to ensure the points are visible. 
+ylim([0.5, 1.5]); % values of visibility
+xlabel('Time of Closest Approach (t_{CA}) sec');
+title('Time of Closest Approach with Error Bars');
+legend;
+grid on;
+hold off;
+
+subplot(1, 2, 2); % second subplot 
+
+hold on;
+% distance at closest approach with error bars
+errorbar(D_min, 1, delta_D_min, 'horizontal', 'LineStyle', 'none', 'Color', 'k', 'LineWidth', 1.5, 'DisplayName', 'Uncertainty in D_{min}');
+plot(D_min, 1, 'ko', 'MarkerSize', 8, 'DisplayName', 'Distance at Closest Approach');
+xlim([0, D_min + delta_D_min + 5]); % to ensure the points are visible. 
+ylim([0.5, 1.5]); % values of visibility
+xlabel('Distance at Closest Approach (D_{min}) [km]');
+title('Distance at Closest Approach with Error Bars');
+xline(1.8, 'r', 'LineWidth', 1.5, 'DisplayName', 'Red Zone Threshold (1.8 km)'); 
+xline(28.2, 'y', 'LineWidth', 1.5, 'DisplayName', 'Yellow Zone Threshold (28.2 km)');
+legend;
+grid on;
+hold off;
